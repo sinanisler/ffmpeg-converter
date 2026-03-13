@@ -1,0 +1,163 @@
+name: Release Build
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Trigger: any push whose HEAD commit message contains the word "release"
+# ──────────────────────────────────────────────────────────────────────────────
+on:
+  push:
+    branches: ["**"]
+
+permissions:
+  contents: write # required to create releases and upload assets
+
+jobs:
+  release:
+    name: Build & Release — Windows x64
+    runs-on: windows-latest
+    # Only run when the commit message contains "release" (case-insensitive)
+    if: contains(github.event.head_commit.message, 'release')
+
+    steps:
+      # ── 1. Checkout full history (needed for the changelog) ─────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── 2. Node.js ──────────────────────────────────────────────────────────
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      # ── 3. Rust stable ──────────────────────────────────────────────────────
+      - name: Install Rust stable (x86_64-pc-windows-msvc)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      # ── 4. Rust build cache (speeds up subsequent runs significantly) ────────
+      - name: Cache Rust build artefacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      # ── 5. FFmpeg binary cache ───────────────────────────────────────────────
+      #       The FFmpeg GPL static build is ~200 MB; cache it so subsequent
+      #       runs don't re-download unless the cache is explicitly cleared.
+      - name: Cache FFmpeg binaries
+        id: cache-ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/binaries
+          key: ffmpeg-win64-gpl-v1-${{ runner.os }}
+
+      # ── 6. Download FFmpeg (only on cache miss) ──────────────────────────────
+      - name: Download FFmpeg GPL static binaries
+        if: steps.cache-ffmpeg.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          Write-Host "Downloading FFmpeg GPL static build (~200 MB)..."
+          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+          Invoke-WebRequest -Uri $url -OutFile ffmpeg.zip -TimeoutSec 600
+          Write-Host "Extracting archives..."
+          Expand-Archive -Path ffmpeg.zip -DestinationPath ffmpeg-tmp -Force
+          $binDir = (Get-ChildItem ffmpeg-tmp -Directory | Select-Object -First 1).FullName + "\bin"
+          New-Item -ItemType Directory -Force -Path "src-tauri\binaries" | Out-Null
+          # Tauri externalBin requires the target-triple suffix during build
+          Copy-Item "$binDir\ffmpeg.exe"  "src-tauri\binaries\ffmpeg-x86_64-pc-windows-msvc.exe"
+          Copy-Item "$binDir\ffprobe.exe" "src-tauri\binaries\ffprobe-x86_64-pc-windows-msvc.exe"
+          Remove-Item ffmpeg.zip, ffmpeg-tmp -Recurse -Force
+          Write-Host "FFmpeg binaries are ready."
+
+      # ── 7. npm dependencies ─────────────────────────────────────────────────
+      - name: Install npm dependencies
+        run: npm install
+
+      # ── 8. Full Tauri release build ─────────────────────────────────────────
+      - name: Build Tauri app (release)
+        run: npm run tauri build
+        env:
+          CI: "true"
+          # Tauri reads TAURI_SIGNING_* for code signing; leave unset for
+          # unsigned builds. Add repo secrets if you want signed binaries.
+
+      # ── 9. Extract version from tauri.conf.json ──────────────────────────────
+      - name: Read app version
+        id: version
+        shell: pwsh
+        run: |
+          $v = (Get-Content "src-tauri/tauri.conf.json" | ConvertFrom-Json).version
+          "VERSION=$v" | Out-File -Append $env:GITHUB_OUTPUT
+          "TAG=v$v"    | Out-File -Append $env:GITHUB_OUTPUT
+          Write-Host "App version: $v"
+
+      # ── 10. Build changelog from recent commit history ───────────────────────
+      - name: Generate changelog from git history
+        id: changelog
+        shell: pwsh
+        run: |
+          # Collect the last 30 commit subjects; skip merge commits for cleanliness
+          $log = git log --pretty=format:"- %s" --no-merges -30 | Out-String
+          # Use a random EOF delimiter to safely embed multi-line output
+          $eof = "CHANGELOG_EOF_$(Get-Random)"
+          "CHANGELOG<<$eof" | Out-File -Append $env:GITHUB_OUTPUT
+          $log              | Out-File -Append $env:GITHUB_OUTPUT -NoNewline
+          $eof              | Out-File -Append $env:GITHUB_OUTPUT
+
+      # ── 11. Create portable ZIP package ─────────────────────────────────────
+      #        Bundles the main exe + ffmpeg/ffprobe so users can just extract
+      #        and double-click — no installer required.
+      - name: Package portable ZIP
+        id: package
+        shell: pwsh
+        run: |
+          $v    = "${{ steps.version.outputs.VERSION }}"
+          $name = "FFmpeg-Converter-$v-Windows-Portable"
+          New-Item -ItemType Directory -Path $name | Out-Null
+
+          # Main application executable
+          Copy-Item "src-tauri\target\release\ffmpeg-converter.exe" "$name\FFmpeg-Converter.exe"
+
+          # FFmpeg binaries — renamed to plain names so the app finds them at runtime
+          # (resolve_binary in lib.rs checks <exe_dir>/ffmpeg.exe first)
+          Copy-Item "src-tauri\binaries\ffmpeg-x86_64-pc-windows-msvc.exe"  "$name\ffmpeg.exe"
+          Copy-Item "src-tauri\binaries\ffprobe-x86_64-pc-windows-msvc.exe" "$name\ffprobe.exe"
+
+          Compress-Archive -Path "$name\*" -DestinationPath "$name.zip" -Force
+          "ZIP=$name.zip" | Out-File -Append $env:GITHUB_OUTPUT
+          Write-Host "Packaged $name.zip"
+
+      # ── 12. Publish GitHub Release ───────────────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.TAG }}
+          name: "FFmpeg Converter ${{ steps.version.outputs.TAG }}"
+          body: |
+            ## FFmpeg Converter ${{ steps.version.outputs.TAG }}
+
+            ### What's Changed
+            ${{ steps.changelog.outputs.CHANGELOG }}
+
+            ---
+
+            ## Downloads
+
+            | File | Description |
+            |------|-------------|
+            | `FFmpeg-Converter-${{ steps.version.outputs.VERSION }}-Windows-Portable.zip` | **Portable** — extract the ZIP anywhere and run `FFmpeg-Converter.exe`. FFmpeg is included, no installation needed. |
+            | `*-setup.exe` | **NSIS Installer** — recommended for most users. Installs everything including FFmpeg automatically. |
+            | `*.msi` | **MSI Installer** — for enterprise / Group Policy deployments. |
+
+            > **Requirements:** Windows 10 / 11 (64-bit).
+            > The portable build requires the [WebView2 runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) which is pre-installed on Windows 10 21H2+ and all Windows 11 systems.
+          files: |
+            ${{ steps.package.outputs.ZIP }}
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+          make_latest: "true"
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: false
