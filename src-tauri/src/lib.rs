@@ -36,6 +36,11 @@ pub struct ConversionOptions {
     pub resolution: Option<String>,
     pub fps: Option<String>,
     pub video_filter: Option<String>,
+    pub brightness: Option<f64>,
+    pub contrast: Option<f64>,
+    pub saturation: Option<f64>,
+    pub gamma: Option<f64>,
+    pub hue: Option<f64>,
     pub audio_codec: Option<String>,
     pub audio_bitrate: Option<String>,
     pub sample_rate: Option<u32>,
@@ -466,7 +471,34 @@ fn run_conversion(
     }
     if let Some(res) = &opts.resolution { if !res.is_empty() && res != "original" { args.extend(["-s".into(), res.clone()]); } }
     if let Some(fps) = &opts.fps { if !fps.is_empty() && fps != "original" { args.extend(["-r".into(), fps.clone()]); } }
-    if let Some(vf) = &opts.video_filter { if !vf.is_empty() { args.extend(["-vf".into(), vf.clone()]); } }
+
+    // ── Video Filters ─────────────────────────────────────────────────────────
+    let mut filters = Vec::new();
+    
+    // Color adjustments (eq filter)
+    // eq=brightness=0:contrast=1:saturation=1:gamma=1
+    let b = opts.brightness.unwrap_or(0.0);
+    let c = opts.contrast.unwrap_or(1.0);
+    let s = opts.saturation.unwrap_or(1.0);
+    let g = opts.gamma.unwrap_or(1.0);
+    
+    if b != 0.0 || c != 1.0 || s != 1.0 || g != 1.0 {
+        filters.push(format!("eq=brightness={}:contrast={}:saturation={}:gamma={}", b, c, s, g));
+    }
+
+    if let Some(hue) = opts.hue {
+        if hue != 0.0 {
+            filters.push(format!("hue=h={}", hue));
+        }
+    }
+
+    if let Some(vf) = &opts.video_filter {
+        if !vf.is_empty() { filters.push(vf.clone()); }
+    }
+
+    if !filters.is_empty() {
+        args.extend(["-vf".into(), filters.join(",")]);
+    }
 
     // Audio
     if opts.no_audio.unwrap_or(false) {

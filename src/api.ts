@@ -25,6 +25,12 @@ export interface ConversionOptions {
   resolution?: string;
   fps?: string;
   video_filter?: string;
+  // Color adjustments (eq filter)
+  brightness?: number;
+  contrast?: number;
+  saturation?: number;
+  gamma?: number;
+  hue?: number;
   audio_codec?: string;
   audio_bitrate?: string;
   sample_rate?: number;

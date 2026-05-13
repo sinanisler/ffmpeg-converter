@@ -97,19 +97,18 @@ export function AdvancedOptions({
                 )}
 
                 {/* Preset */}
-                {options.video_codec !== "copy" &&
-                  options.video_codec !== "libvpx-vp9" && (
-                    <Field
-                      label="Encoding Preset"
-                      tooltip="Determines encoding speed vs compression ratio. Slower presets produce smaller files at the same quality."
-                    >
-                      <Select
-                        value={options.preset ?? "medium"}
-                        onChange={(v) => onChange("preset", v)}
-                        options={PRESETS}
-                      />
-                    </Field>
-                  )}
+                {options.video_codec !== "copy" && (
+                  <Field
+                    label="Speed Preset"
+                    tooltip="Trade-off between encoding speed and compression efficiency."
+                  >
+                    <Select
+                      value={options.preset ?? "medium"}
+                      onChange={(v) => onChange("preset", v)}
+                      options={PRESETS}
+                    />
+                  </Field>
+                )}
 
                 {/* Video Bitrate */}
                 {options.video_codec !== "copy" && (
@@ -169,6 +168,79 @@ export function AdvancedOptions({
               </Section>
             </>
           )}
+
+          <Section title="Color Adjustments">
+            <div className="grid grid-cols-2 gap-4">
+              <Field label={`Brightness: ${options.brightness ?? 0}`} tooltip="Adjust the brightness of the video.">
+                <input
+                  type="range"
+                  min={-1}
+                  max={1}
+                  step={0.05}
+                  value={options.brightness ?? 0}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange("brightness", parseFloat(e.target.value))}
+                  className="w-full accent-indigo-500"
+                />
+              </Field>
+              <Field label={`Contrast: ${options.contrast ?? 1}`} tooltip="Adjust the contrast of the video.">
+                <input
+                  type="range"
+                  min={-2}
+                  max={2}
+                  step={0.1}
+                  value={options.contrast ?? 1}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange("contrast", parseFloat(e.target.value))}
+                  className="w-full accent-indigo-500"
+                />
+              </Field>
+              <Field label={`Saturation: ${options.saturation ?? 1}`} tooltip="Adjust the color saturation.">
+                <input
+                  type="range"
+                  min={0}
+                  max={3}
+                  step={0.1}
+                  value={options.saturation ?? 1}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange("saturation", parseFloat(e.target.value))}
+                  className="w-full accent-indigo-500"
+                />
+              </Field>
+              <Field label={`Gamma: ${options.gamma ?? 1}`} tooltip="Adjust the gamma correction.">
+                <input
+                  type="range"
+                  min={0.1}
+                  max={10}
+                  step={0.1}
+                  value={options.gamma ?? 1}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange("gamma", parseFloat(e.target.value))}
+                  className="w-full accent-indigo-500"
+                />
+              </Field>
+              <Field label={`Hue: ${options.hue ?? 0}`} tooltip="Adjust the color hue (degrees).">
+                <input
+                  type="range"
+                  min={-360}
+                  max={360}
+                  step={1}
+                  value={options.hue ?? 0}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange("hue", parseFloat(e.target.value))}
+                  className="w-full accent-indigo-500"
+                />
+              </Field>
+              <button
+                onClick={() => {
+                  onChange("brightness", 0);
+                  onChange("contrast", 1);
+                  onChange("saturation", 1);
+                  onChange("gamma", 1);
+                  onChange("hue", 0);
+                }}
+                className="text-xs mt-auto mb-1 px-2 py-1 rounded border hover:bg-white/5 transition-colors"
+                style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+              >
+                Reset Colors
+              </button>
+            </div>
+          </Section>
 
           <Section title="Audio">
             {/* Audio Codec */}
@@ -323,20 +395,29 @@ function Field({
   children,
 }: {
   label: string;
-  tooltip: string;
+  tooltip?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="grid gap-1" style={{ gridTemplateColumns: "1fr 1.4fr" }}>
-      <Tooltip content={tooltip}>
+      {tooltip ? (
+        <Tooltip content={tooltip}>
+          <label
+            className="text-xs flex items-center gap-1 cursor-help"
+            style={{ color: "var(--muted)" }}
+          >
+            {label}
+            <span style={{ color: "var(--accent)", fontSize: 10 }}>ⓘ</span>
+          </label>
+        </Tooltip>
+      ) : (
         <label
-          className="text-xs flex items-center gap-1 cursor-help"
+          className="text-xs flex items-center gap-1"
           style={{ color: "var(--muted)" }}
         >
           {label}
-          <span style={{ color: "var(--accent)", fontSize: 10 }}>ⓘ</span>
         </label>
-      </Tooltip>
+      )}
       <div>{children}</div>
     </div>
   );

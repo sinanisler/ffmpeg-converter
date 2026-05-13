@@ -19,6 +19,7 @@ import { QuickPresets } from "./components/QuickPresets";
 import { AdvancedOptions } from "./components/AdvancedOptions";
 import { ProgressPanel } from "./components/ProgressPanel";
 import { DebugConsole, DebugEntry } from "./components/DebugConsole";
+import { VideoPreview } from "./components/VideoPreview";
 
 type Theme = "dark" | "light";
 
@@ -65,6 +66,7 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>("dark");
   const [ffmpegStatus, setFfmpegStatus] = useState<FFmpegStatus | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [isConverting, setIsConverting] = useState(false);
   const [currentProgress, setCurrentProgress] = useState<CurrentProgress>({
     percent: 0,
@@ -234,6 +236,10 @@ export default function App() {
     queueRef.current = combined;
     setQueue(combined);
 
+    if (!selectedItemId && newItems.length > 0) {
+      setSelectedItemId(newItems[0].id);
+    }
+
     for (const item of newItems) {
       try {
         const info = await api.getMediaInfo(item.inputPath);
@@ -258,11 +264,15 @@ export default function App() {
     const updated = queueRef.current.filter((q) => q.id !== id);
     queueRef.current = updated;
     setQueue(updated);
-  }, []);
+    if (selectedItemId === id) {
+      setSelectedItemId(updated[0]?.id ?? null);
+    }
+  }, [selectedItemId]);
 
   const handleClearQueue = useCallback(() => {
     queueRef.current = [];
     setQueue([]);
+    setSelectedItemId(null);
   }, []);
 
   const handleFormatSelect = useCallback((fmt: FormatPreset) => {
@@ -376,6 +386,7 @@ export default function App() {
   const handleNewConversion = () => {
     queueRef.current = [];
     setQueue([]);
+    setSelectedItemId(null);
     setIsConverting(false);
     isConvertingRef.current = false;
     setCurrentProgress({ percent: 0 });
@@ -393,6 +404,8 @@ export default function App() {
   const canConvert =
     hasItems && pendingCount > 0 && !isConverting && !!ffmpegStatus?.available;
   const queueCurrentIndex = doneCount + errorCount + (convertingItem ? 1 : 0);
+
+  const selectedItem = queue.find((q) => q.id === selectedItemId);
 
   return (
     <div
@@ -461,100 +474,118 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-1 p-6 mx-auto w-full" style={{ maxWidth: 1400 }}>
-        <div className="space-y-5">
-          {/* Drop zone — always visible when not converting */}
-          {!isConverting && (
-            <FileDropZone onFilesAdded={handleFilesAdded} compact={hasItems} />
-          )}
+      <main className="flex-1 p-6 mx-auto w-full" >
+        <div className="flex flex-col lg:flex-row gap-6 h-full">
+          {/* Left Column: Controls & Queue */}
+          <div className="flex-1 space-y-5 min-w-0">
+            {/* Drop zone — always visible when not converting */}
+            {!isConverting && (
+              <FileDropZone onFilesAdded={handleFilesAdded} compact={hasItems} />
+            )}
 
-          {/* Queue list */}
-          {hasItems && !isConverting && (
-            <QueueList
-              items={queue}
-              onRemove={handleRemoveItem}
-              onClear={handleClearQueue}
-              onBrowseOutput={handleBrowseOutput}
-              onReveal={handleRevealFile}
-            />
-          )}
-
-          {/* Format + Options — visible when queue has items and not converting */}
-          {hasItems && !isConverting && (
-            <>
-              <QuickPresets
-                selectedPresetId={activePresetId}
-                onSelect={handleQuickPreset}
+            {/* Queue list */}
+            {hasItems && !isConverting && (
+              <QueueList
+                items={queue}
+                selectedId={selectedItemId}
+                onSelect={setSelectedItemId}
+                onRemove={handleRemoveItem}
+                onClear={handleClearQueue}
+                onBrowseOutput={handleBrowseOutput}
+                onReveal={handleRevealFile}
               />
-              <FormatSelector
-                selected={selectedFormat.ext}
-                onSelect={handleFormatSelect}
-              />
-              <AdvancedOptions
-                options={options}
-                onChange={handleOptionChange}
-                isAudioOnly={isAudioOnly}
-              />
-            </>
-          )}
+            )}
 
-          {/* Convert button */}
-          {hasItems && !isConverting && (
-            <button
-              onClick={handleConvertAll}
-              disabled={!canConvert}
-              className="w-full py-3 rounded-xl font-semibold text-base transition-all"
-              style={{
-                background: canConvert
-                  ? "linear-gradient(135deg, var(--accent-dark), var(--accent))"
-                  : "var(--surface2)",
-                color: canConvert ? "white" : "var(--muted)",
-                border: "none",
-                cursor: canConvert ? "pointer" : "not-allowed",
-                boxShadow: canConvert
-                  ? "0 4px 20px var(--accent-glow)"
-                  : "none",
-              }}
-            >
-              {!ffmpegStatus?.available
-                ? "⚠ FFmpeg not found"
-                : pendingCount === 0
-                  ? "No pending files"
-                  : pendingCount === 1
-                    ? "▶  Convert 1 File"
-                    : `▶  Convert All (${pendingCount} files)`}
-            </button>
-          )}
+            {/* Format + Options — visible when queue has items and not converting */}
+            {hasItems && !isConverting && (
+              <>
+                <QuickPresets
+                  selectedPresetId={activePresetId}
+                  onSelect={handleQuickPreset}
+                />
+                <FormatSelector
+                  selected={selectedFormat.ext}
+                  onSelect={handleFormatSelect}
+                />
+                <AdvancedOptions
+                  options={options}
+                  onChange={handleOptionChange}
+                  isAudioOnly={isAudioOnly}
+                />
+              </>
+            )}
 
-          {/* Progress panel */}
-          {isConverting && (
-            <ProgressPanel
-              allFinished={allFinished}
-              currentFileName={
-                convertingItem?.inputPath.split(/[\\/]/).pop() ?? ""
-              }
-              currentOutputPath={convertingItem?.outputPath ?? ""}
-              percent={currentProgress.percent}
-              fps={currentProgress.fps}
-              speed={currentProgress.speed}
-              timeElapsed={currentProgress.timeElapsed}
-              sizeKb={currentProgress.sizeKb}
-              queueCurrentIndex={queueCurrentIndex}
-              queueTotal={queue.length}
-              queueDone={doneCount}
-              queueError={errorCount}
-              onCancel={handleCancelCurrent}
-              onNewConversion={handleNewConversion}
-              results={queue
-                .filter((q) => q.status === "done" || q.status === "error")
-                .map((q) => ({
-                  filename: q.inputPath.split(/[\\/]/).pop() ?? "",
-                  outputPath: q.outputPath,
-                  success: q.status === "done",
-                  error: q.errorMsg,
-                }))}
-              onReveal={handleRevealFile}
-            />
+            {/* Convert button */}
+            {hasItems && !isConverting && (
+              <button
+                onClick={handleConvertAll}
+                disabled={!canConvert}
+                className="w-full py-3 rounded-xl font-semibold text-base transition-all"
+                style={{
+                  background: canConvert
+                    ? "linear-gradient(135deg, var(--accent-dark), var(--accent))"
+                    : "var(--surface2)",
+                  color: canConvert ? "white" : "var(--muted)",
+                  border: "none",
+                  cursor: canConvert ? "pointer" : "not-allowed",
+                  boxShadow: canConvert
+                    ? "0 4px 20px var(--accent-glow)"
+                    : "none",
+                }}
+              >
+                {!ffmpegStatus?.available
+                  ? "⚠ FFmpeg not found"
+                  : pendingCount === 0
+                    ? "No pending files"
+                    : pendingCount === 1
+                      ? "▶  Convert 1 File"
+                      : `▶  Convert All (${pendingCount} files)`}
+              </button>
+            )}
+
+            {/* Progress panel */}
+            {isConverting && (
+              <ProgressPanel
+                allFinished={allFinished}
+                currentFileName={
+                  convertingItem?.inputPath.split(/[\\/]/).pop() ?? ""
+                }
+                currentOutputPath={convertingItem?.outputPath ?? ""}
+                percent={currentProgress.percent}
+                fps={currentProgress.fps}
+                speed={currentProgress.speed}
+                timeElapsed={currentProgress.timeElapsed}
+                sizeKb={currentProgress.sizeKb}
+                queueCurrentIndex={queueCurrentIndex}
+                queueTotal={queue.length}
+                queueDone={doneCount}
+                queueError={errorCount}
+                onCancel={handleCancelCurrent}
+                onNewConversion={handleNewConversion}
+                results={queue
+                  .filter((q) => q.status === "done" || q.status === "error")
+                  .map((q) => ({
+                    filename: q.inputPath.split(/[\\/]/).pop() ?? "",
+                    outputPath: q.outputPath,
+                    success: q.status === "done",
+                    error: q.errorMsg,
+                  }))
+                }
+                onReveal={handleRevealFile}
+              />
+            )}
+          </div>
+
+          {/* Right Column: Preview */}
+          {!isConverting && hasItems && (
+            <div className="lg:w-[50%] flex-shrink-0">
+              <div className="sticky top-6 h-[calc(100vh-180px)] min-h-[400px]">
+                <VideoPreview
+                  filePath={selectedItem?.inputPath ?? null}
+                  mediaInfo={selectedItem?.mediaInfo ?? null}
+                />
+              </div>
+            </div>
           )}
         </div>
       </main>
@@ -573,6 +604,8 @@ export default function App() {
 
 interface QueueListProps {
   items: QueueItem[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
   onRemove: (id: string) => void;
   onClear: () => void;
   onBrowseOutput: (id: string) => void;
@@ -581,6 +614,8 @@ interface QueueListProps {
 
 function QueueList({
   items,
+  selectedId,
+  onSelect,
   onRemove,
   onClear,
   onBrowseOutput,
@@ -628,6 +663,8 @@ function QueueList({
           <QueueRow
             key={item.id}
             item={item}
+            isSelected={item.id === selectedId}
+            onSelect={() => onSelect(item.id)}
             onRemove={onRemove}
             onBrowseOutput={onBrowseOutput}
             onReveal={onReveal}
@@ -642,12 +679,21 @@ function QueueList({
 
 interface QueueRowProps {
   item: QueueItem;
+  isSelected: boolean;
+  onSelect: () => void;
   onRemove: (id: string) => void;
   onBrowseOutput: (id: string) => void;
   onReveal: (path: string) => void;
 }
 
-function QueueRow({ item, onRemove, onBrowseOutput, onReveal }: QueueRowProps) {
+function QueueRow({
+  item,
+  isSelected,
+  onSelect,
+  onRemove,
+  onBrowseOutput,
+  onReveal,
+}: QueueRowProps) {
   const filename = item.inputPath.split(/[\\/]/).pop() ?? "";
   const ext = filename.split(".").pop()?.toUpperCase() ?? "";
   const outputFilename = item.outputPath.split(/[\\/]/).pop() ?? "";
@@ -670,10 +716,13 @@ function QueueRow({ item, onRemove, onBrowseOutput, onReveal }: QueueRowProps) {
 
   return (
     <div
-      className="rounded-xl px-4 py-3 group"
+      onClick={onSelect}
+      className="rounded-xl px-4 py-3 group transition-all"
       style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
+        background: isSelected ? "var(--surface2)" : "var(--surface)",
+        border: "1px solid",
+        borderColor: isSelected ? "var(--accent)" : "var(--border)",
+        cursor: "pointer",
       }}
     >
       <div className="flex items-center gap-3">
