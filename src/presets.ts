@@ -173,7 +173,7 @@ export const QUICK_PRESETS: QuickPreset[] = [
     id: "compress-web",
     label: "Compress for Web",
     description:
-      "Shrink the video for web upload. H.264 MP4, CRF 28, 720p max. Good balance of size and quality.",
+      "Shrink the video for web upload. H.264 MP4, CRF 28. Good balance of size and quality.",
     icon: "📦",
     build: () => ({
       format: "mp4",
@@ -181,7 +181,6 @@ export const QUICK_PRESETS: QuickPreset[] = [
       audio_codec: "aac",
       crf: 28,
       preset: "slow",
-      resolution: "1280x720",
       audio_bitrate: "128k",
     }),
   },
@@ -189,7 +188,7 @@ export const QUICK_PRESETS: QuickPreset[] = [
     id: "compress-small",
     label: "Max Compression",
     description:
-      "Smallest file size possible. H.265, CRF 32, 480p. May take longer to encode.",
+      "Smallest file size possible. H.265, CRF 32. May take longer to encode.",
     icon: "🗜",
     build: () => ({
       format: "mp4",
@@ -197,7 +196,6 @@ export const QUICK_PRESETS: QuickPreset[] = [
       audio_codec: "aac",
       crf: 32,
       preset: "slow",
-      resolution: "854x480",
       audio_bitrate: "96k",
     }),
   },
