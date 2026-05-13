@@ -14,7 +14,7 @@ export function VideoPreview({ filePath, mediaInfo, options }: VideoPreviewProps
   const [currentTime, setCurrentTime] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   
-  const requestTimeout = useRef<NodeJS.Timeout | null>(null);
+  const requestTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchFrame = useCallback(async (time: number) => {
     if (!filePath) return;

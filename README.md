@@ -1,5 +1,13 @@
 # FFmpeg Converter
 
+
+<br>
+<a href="https://github.com/sponsors/sinanisler">
+<img src="https://img.shields.io/badge/Consider_Supporting_My_Projects_❤-GitHub-d46" width="280" height="auto" />
+</a>
+<br>
+
+
 A native Windows desktop application that wraps FFmpeg with a clean, modern GUI.  
 Convert video and audio files without touching a terminal — with full GPU hardware acceleration support.
 
