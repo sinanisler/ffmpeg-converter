@@ -8,14 +8,19 @@
     "core:event:allow-listen",
     "core:event:allow-emit",
     "opener:default",
-    "opener:allow-reveal-item-in-dir",
-    "opener:allow-open-path",
+    {
+      "identifier": "opener:allow-open-path",
+      "allow": [{ "path": "**" }]
+    },
+    {
+      "identifier": "opener:allow-reveal-item-in-dir",
+      "allow": [{ "path": "**" }]
+    },
     "dialog:allow-open",
     "dialog:allow-save",
     "fs:read-all",
     "fs:write-all",
     "fs:allow-exists",
-    "protocol:allow-asset",
     "shell:allow-execute",
     "shell:allow-spawn",
     "shell:allow-kill"

@@ -90,6 +90,12 @@ export const api = {
   cancelConversion: (jobId: string): Promise<void> =>
     invoke("cancel_conversion", { jobId }),
 
+  getThumbnail: (
+    path: string,
+    time?: number,
+    options?: ConversionOptions,
+  ): Promise<string> => invoke("get_thumbnail", { path, time, options }),
+
   onProgress: (handler: (e: ProgressEvent) => void): Promise<UnlistenFn> =>
     listen<ProgressEvent>("conversion://progress", (event) =>
       handler(event.payload),

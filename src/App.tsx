@@ -583,6 +583,7 @@ export default function App() {
                 <VideoPreview
                   filePath={selectedItem?.inputPath ?? null}
                   mediaInfo={selectedItem?.mediaInfo ?? null}
+                  options={options as ConversionOptions}
                 />
               </div>
             </div>

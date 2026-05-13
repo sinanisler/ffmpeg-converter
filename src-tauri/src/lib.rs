@@ -313,6 +313,66 @@ pub fn cancel_conversion(state: State<AppState>, job_id: String) -> Result<(), S
     Ok(())
 }
 
+#[tauri::command]
+pub async fn get_thumbnail(
+    state: State<'_, AppState>,
+    path: String,
+    time: Option<f64>,
+    options: Option<ConversionOptions>,
+) -> Result<String, String> {
+    let ffmpeg = state.ffmpeg_path.lock().unwrap().clone().ok_or("FFmpeg not found")?;
+    
+    let time_str = format!("{:.3}", time.unwrap_or(1.0));
+
+    let mut args = vec![
+        "-ss".to_string(), time_str,
+        "-i".to_string(), path,
+    ];
+
+    // Apply color filters if options are provided
+    if let Some(opts) = options {
+        let mut filters = Vec::new();
+        
+        let b = opts.brightness.unwrap_or(0.0);
+        let c = opts.contrast.unwrap_or(1.0);
+        let s = opts.saturation.unwrap_or(1.0);
+        let g = opts.gamma.unwrap_or(1.0);
+        
+        if b != 0.0 || c != 1.0 || s != 1.0 || g != 1.0 {
+            filters.push(format!("eq=brightness={}:contrast={}:saturation={}:gamma={}", b, c, s, g));
+        }
+
+        if let Some(hue) = opts.hue {
+            if hue != 0.0 {
+                filters.push(format!("hue=h={}", hue));
+            }
+        }
+
+        if !filters.is_empty() {
+            args.push("-vf".to_string());
+            args.push(filters.join(","));
+        }
+    }
+
+    args.extend([
+        "-frames:v".to_string(), "1".to_string(),
+        "-q:v".to_string(), "4".to_string(), // Slightly lower quality for faster scrubbing
+        "-f".to_string(), "mjpeg".to_string(),
+        "pipe:1".to_string()
+    ]);
+
+    let output = Command::new(ffmpeg)
+        .args(&args)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err("Failed to extract thumbnail".into());
+    }
+
+    Ok(format!("data:image/jpeg;base64,{}", base64_simd::STANDARD.encode_to_string(&output.stdout)))
+}
+
 } // end mod commands
 
 // ─── Hardware-acceleration helpers ───────────────────────────────────────────
@@ -641,6 +701,7 @@ pub fn run() {
             commands::get_media_info,
             commands::start_conversion,
             commands::cancel_conversion,
+            commands::get_thumbnail,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
