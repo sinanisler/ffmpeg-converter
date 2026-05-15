@@ -75,23 +75,55 @@ jobs:
       - name: Install npm dependencies
         run: npm install
 
-      # ── 8. Full Tauri release build ─────────────────────────────────────────
+      # ── 8. Increment Version & Commit ───────────────────────────────────────
+      - name: Bump version
+        id: bump
+        shell: pwsh
+        run: |
+          $configPath = "src-tauri/tauri.conf.json"
+          $packagePath = "package.json"
+          
+          # Read current version from tauri.conf.json
+          $config = Get-Content $configPath -Raw | ConvertFrom-Json
+          $v = $config.version
+          $parts = $v.Split('.')
+          
+          # Force Major to 1, increment Minor
+          $major = 1
+          $minor = 0
+          if ($parts.Length -gt 1) { $minor = [int]$parts[1] }
+          $newMinor = $minor + 1
+          $newVersion = "$major.$newMinor"
+          
+          Write-Host "Bumping version from $v to $newVersion"
+          
+          # Update tauri.conf.json
+          $config.version = $newVersion
+          $config | ConvertTo-Json -Depth 100 | Set-Content $configPath
+          
+          # Update package.json
+          $pkg = Get-Content $packagePath -Raw | ConvertFrom-Json
+          $pkg.version = $newVersion
+          $pkg | ConvertTo-Json -Depth 100 | Set-Content $packagePath
+          
+          # Configure Git and Push
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add $configPath $packagePath
+          git commit -m "chore: bump version to $newVersion [skip ci]"
+          git push
+          
+          # Output for subsequent steps
+          "VERSION=$newVersion" | Out-File -Append $env:GITHUB_OUTPUT
+          "TAG=v$newVersion"    | Out-File -Append $env:GITHUB_OUTPUT
+
+      # ── 9. Full Tauri release build ─────────────────────────────────────────
       - name: Build Tauri app (release)
         run: npm run tauri build
         env:
           CI: "true"
           # Tauri reads TAURI_SIGNING_* for code signing; leave unset for
           # unsigned builds. Add repo secrets if you want signed binaries.
-
-      # ── 9. Extract version from tauri.conf.json ──────────────────────────────
-      - name: Read app version
-        id: version
-        shell: pwsh
-        run: |
-          $v = (Get-Content "src-tauri/tauri.conf.json" | ConvertFrom-Json).version
-          "VERSION=$v" | Out-File -Append $env:GITHUB_OUTPUT
-          "TAG=v$v"    | Out-File -Append $env:GITHUB_OUTPUT
-          Write-Host "App version: $v"
 
       # ── 10. Build changelog from recent commit history ───────────────────────
       - name: Generate changelog from git history
@@ -113,7 +145,7 @@ jobs:
         id: package
         shell: pwsh
         run: |
-          $v    = "${{ steps.version.outputs.VERSION }}"
+          $v    = "${{ steps.bump.outputs.VERSION }}"
           $name = "FFmpeg-Converter-$v-Windows-Portable"
           New-Item -ItemType Directory -Path $name | Out-Null
 
@@ -133,10 +165,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.TAG }}
-          name: "FFmpeg Converter ${{ steps.version.outputs.TAG }}"
+          tag_name: ${{ steps.bump.outputs.TAG }}
+          name: "FFmpeg Converter ${{ steps.bump.outputs.TAG }}"
           body: |
-            ## FFmpeg Converter ${{ steps.version.outputs.TAG }}
+            ## FFmpeg Converter ${{ steps.bump.outputs.TAG }}
 
             ### What's Changed
             ${{ steps.changelog.outputs.CHANGELOG }}
@@ -147,7 +179,7 @@ jobs:
 
             | File | Description |
             |------|-------------|
-            | `FFmpeg-Converter-${{ steps.version.outputs.VERSION }}-Windows-Portable.zip` | **Portable** — extract the ZIP anywhere and run `FFmpeg-Converter.exe`. FFmpeg is included, no installation needed. |
+            | `FFmpeg-Converter-${{ steps.bump.outputs.VERSION }}-Windows-Portable.zip` | **Portable** — extract the ZIP anywhere and run `FFmpeg-Converter.exe`. FFmpeg is included, no installation needed. |
             | `*-setup.exe` | **NSIS Installer** — recommended for most users. Installs everything including FFmpeg automatically. |
             | `*.msi` | **MSI Installer** — for enterprise / Group Policy deployments. |
 
