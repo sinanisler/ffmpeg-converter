@@ -3,7 +3,7 @@
 > **Read this file at the start of every session.** It contains the full
 > history, architecture decisions, known pitfalls, and pending work for the
 > FFmpeg Converter project.
-
+ 
 ---
 
 ## 1. What Is This Project?
