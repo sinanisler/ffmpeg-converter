@@ -240,6 +240,7 @@ npm run dev
 | **Binaries not found by Tauri** | Tauri's `externalBin` requires the binary filename to include the target triple                                | Binaries MUST be named `ffmpeg-x86_64-pc-windows-msvc.exe`, not `ffmpeg.exe`                                                         |
 | **Wrong fs permission names**   | Tauri v2 uses `fs:read-all` not `fs:allow-read-all`                                                            | Use exact identifiers from the error output                                                                                          |
 | **Port 1420 in use**            | Previous dev server not properly terminated                                                                    | Kill all `node.exe` processes before re-running `npm run tauri dev`                                                                  |
+| **Cmd.exe window flashes on every click** | `std::process::Command` spawns ffmpeg/ffprobe as console subsystem processes, causing brief cmd.exe popups on Windows | Add `#[cfg(windows)] use std::os::windows::process::CommandExt;` and call `.creation_flags(0x08000000)` (CREATE_NO_WINDOW) on every Command before `.spawn()` / `.output()`. Applied in 5 places: `resolve_binary`, `get_ffmpeg_status`, `get_media_info`, `get_thumbnail`, `run_conversion`. |
 
 ---
 
@@ -293,6 +294,18 @@ npm run dev
 - **UX improvements** → (file size estimate, recent files, keyboard shortcuts, etc.)
 - **README.md** created with full user + developer documentation
 - **AGENTS.md** created (this file)
+
+### Session 5 — Hide cmd.exe popup windows
+
+- **Problem**: Every click (media info, conversion, thumbnail) spawned ffmpeg/ffprobe via `std::process::Command`, which on Windows briefly flashes a cmd.exe console window. Bad UX, looks insecure.
+- **Fix**: Added `CREATE_NO_WINDOW` (`0x08000000`) creation flag to all 5 `Command` spawns in `lib.rs`:
+  - `resolve_binary` ("where" command)
+  - `get_ffmpeg_status` (background version check)
+  - `get_media_info` (ffprobe)
+  - `get_thumbnail` (ffmpeg thumbnail extraction)
+  - `run_conversion` (main conversion spawn)
+- **Pattern**: Added `#[cfg(windows)] use std::os::windows::process::CommandExt;` import, then call `cmd.creation_flags(0x08000000);` before `.output()` or `.spawn()`. Use `let mut cmd = Command::new(...);` pattern (not chained) so the cfg-gated call compiles on all platforms.
+- FFmpeg cannot be kept as a persistent daemon (it's a one-shot CLI tool), but the debug console (`DebugConsole.tsx`) already displays all FFmpeg output within the app window.
 
 ---
 

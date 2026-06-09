@@ -4,6 +4,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 use uuid::Uuid;
@@ -127,7 +130,13 @@ fn resolve_binary(app: &AppHandle, name: &str) -> Option<PathBuf> {
     }
 
     // 4. System PATH
-    if let Ok(out) = Command::new("where").arg(name).output() {
+    if let Ok(out) = {
+        let mut cmd = Command::new("where");
+        cmd.arg(name);
+        #[cfg(windows)]
+        cmd.creation_flags(0x08000000);
+        cmd.output()
+    } {
         if out.status.success() {
             let path_str = String::from_utf8_lossy(&out.stdout);
             let first = path_str.lines().next().unwrap_or("").trim().to_string();
@@ -162,9 +171,11 @@ pub fn get_ffmpeg_status(app: AppHandle, state: State<AppState>) -> serde_json::
     if let Some(path) = ffmpeg_str.clone() {
         let app2 = app.clone();
         std::thread::spawn(move || {
-            let version = Command::new(&path)
-                .arg("-version")
-                .output()
+            let mut cmd = Command::new(&path);
+            cmd.arg("-version");
+            #[cfg(windows)]
+            cmd.creation_flags(0x08000000);
+            let version = cmd.output()
                 .ok()
                 .map(|o| String::from_utf8_lossy(&o.stdout).lines().next().unwrap_or("").to_string());
             let _ = app2.emit("ffmpeg://version", serde_json::json!({ "version": version }));
@@ -196,9 +207,11 @@ pub fn get_media_info(
         return Err("ffprobe not found".into());
     }
 
-    let output = Command::new(&ffprobe_path)
-        .args(["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", &path])
-        .output()
+    let mut cmd = Command::new(&ffprobe_path);
+    cmd.args(["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", &path]);
+    #[cfg(windows)]
+    cmd.creation_flags(0x08000000);
+    let output = cmd.output()
         .map_err(|e| e.to_string())?;
 
     if !output.status.success() {
@@ -361,9 +374,11 @@ pub async fn get_thumbnail(
         "pipe:1".to_string()
     ]);
 
-    let output = Command::new(ffmpeg)
-        .args(&args)
-        .output()
+    let mut cmd = Command::new(ffmpeg);
+    cmd.args(&args);
+    #[cfg(windows)]
+    cmd.creation_flags(0x08000000);
+    let output = cmd.output()
         .map_err(|e| e.to_string())?;
 
     if !output.status.success() {
@@ -587,11 +602,13 @@ fn run_conversion(
         "message": format!("ffmpeg {}", args.join(" "))
     }));
 
-    let mut child = Command::new(ffmpeg_path)
-        .args(&args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
+    let mut cmd = Command::new(ffmpeg_path);
+    cmd.args(&args);
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+    #[cfg(windows)]
+    cmd.creation_flags(0x08000000);
+    let mut child = cmd.spawn()
         .map_err(|e| format!("Failed to spawn FFmpeg: {}", e))?;
 
     let stderr = child.stderr.take().unwrap();
