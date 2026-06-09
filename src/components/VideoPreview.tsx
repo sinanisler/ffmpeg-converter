@@ -1,6 +1,93 @@
 import { MediaInfo, api, ConversionOptions } from "../api";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
+import { VIDEO_CODECS, AUDIO_CODECS } from "../presets";
+
+// ─── Output metadata helpers ─────────────────────────────────────────────────
+
+/** Parse a time string (HH:MM:SS, MM:SS, or raw seconds) to seconds. */
+function parseTimeToSeconds(t: string): number {
+  const trimmed = t.trim();
+  if (/^\d+(\.\d+)?$/.test(trimmed)) return parseFloat(trimmed); // raw seconds
+  const parts = trimmed.split(":").map(Number);
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return 0;
+}
+
+/** Format seconds as HH:MM:SS or MM:SS string. */
+function formatDuration(secs: number): string {
+  if (secs <= 0) return "00:00";
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = Math.floor(secs % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+/** Get a friendly display label for a codec value. */
+function getCodecLabel(codecValue: string | undefined, isVideo: boolean): string {
+  if (!codecValue) return "Unknown";
+  const list = isVideo ? VIDEO_CODECS : AUDIO_CODECS;
+  const found = list.find((c) => c.value === codecValue);
+  return found ? found.label : codecValue;
+}
+
+interface OutputMeta {
+  codec: string;
+  resolution: string;
+  duration: string;
+}
+
+/** Derive output metadata from source info + encoding options. */
+function getOutputMetadata(
+  mediaInfo: MediaInfo | null,
+  options?: ConversionOptions,
+): OutputMeta | null {
+  if (!mediaInfo) return null;
+
+  const isSourceVideo = !!mediaInfo.video_codec;
+  const isAudioOnly =
+    options?.no_video ||
+    (!isSourceVideo && !options?.video_codec);
+
+  // ── Codec ──────────────────────────────────────────────────────────────
+  let codec: string;
+  if (isAudioOnly) {
+    codec = getCodecLabel(options?.audio_codec, false);
+  } else {
+    codec = getCodecLabel(options?.video_codec, true);
+  }
+
+  // ── Resolution ─────────────────────────────────────────────────────────
+  let resolution: string;
+  if (options?.resolution && options.resolution !== "original") {
+    resolution = options.resolution; // e.g. "1920x1080"
+  } else if (mediaInfo.width && mediaInfo.height) {
+    resolution = `${mediaInfo.width}x${mediaInfo.height}`;
+  } else {
+    resolution = "—";
+  }
+
+  // ── Duration (with trimming) ───────────────────────────────────────────
+  let duration: string;
+  if (options?.start_time || options?.end_time) {
+    const startSecs = options.start_time
+      ? parseTimeToSeconds(options.start_time)
+      : 0;
+    const endSecs = options.end_time
+      ? parseTimeToSeconds(options.end_time)
+      : mediaInfo.duration;
+    const trimmedSecs = Math.max(0, endSecs - startSecs);
+    duration = formatDuration(trimmedSecs);
+  } else {
+    duration = mediaInfo.duration_str || formatDuration(mediaInfo.duration);
+  }
+
+  return { codec, resolution, duration };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface VideoPreviewProps {
   filePath: string | null;
@@ -58,6 +145,11 @@ export function VideoPreview({ filePath, mediaInfo, options }: VideoPreviewProps
 
   const isVideo = mediaInfo?.video_codec !== undefined;
   const duration = mediaInfo?.duration || 0;
+
+  const outputMeta = useMemo(
+    () => getOutputMetadata(mediaInfo, options),
+    [mediaInfo, options],
+  );
 
   const handleOpenSystem = async () => {
     try {
@@ -159,13 +251,19 @@ export function VideoPreview({ filePath, mediaInfo, options }: VideoPreviewProps
             <h3 className="text-sm font-bold truncate mb-1" style={{ color: "var(--text)" }}>
               {filePath.split(/[\\/]/).pop()}
             </h3>
-            {mediaInfo && (
-              <div className="flex flex-wrap gap-2 mt-2">
-                <InfoChip label="Codec" value={mediaInfo.video_codec || mediaInfo.audio_codec || "Unknown"} />
-                {mediaInfo.width && mediaInfo.height && (
-                  <InfoChip label="Size" value={`${mediaInfo.width}x${mediaInfo.height}`} />
-                )}
-                <InfoChip label="Duration" value={mediaInfo.duration_str} />
+            {outputMeta && (
+              <div className="mt-2">
+                <span
+                  className="text-[9px] font-semibold uppercase tracking-widest mb-1 block"
+                  style={{ color: "var(--accent)" }}
+                >
+                  Encoding
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  <InfoChip label="Codec" value={outputMeta.codec} />
+                  <InfoChip label="Size" value={outputMeta.resolution} />
+                  <InfoChip label="Duration" value={outputMeta.duration} />
+                </div>
               </div>
             )}
           </div>
