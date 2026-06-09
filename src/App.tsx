@@ -7,6 +7,7 @@ import {
   api,
   ConversionOptions,
   FFmpegStatus,
+  HwEncoderStatus,
   MediaInfo,
   ProgressEvent,
   ConversionDoneEvent,
@@ -65,6 +66,7 @@ function autoOutputPath(inputPath: string, format: FormatPreset): string {
 export default function App() {
   const [theme, setTheme] = useState<Theme>("dark");
   const [ffmpegStatus, setFfmpegStatus] = useState<FFmpegStatus | null>(null);
+  const [hwEncoders, setHwEncoders] = useState<HwEncoderStatus | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [isConverting, setIsConverting] = useState(false);
@@ -149,6 +151,9 @@ export default function App() {
 
   useEffect(() => {
     api.getFFmpegStatus().then(setFfmpegStatus);
+    api.checkHwEncoders().then(setHwEncoders).catch(() => {
+      // Non-critical — if this fails we still show all GPU options
+    });
 
     api
       .onVersion((e) => {
@@ -502,6 +507,7 @@ export default function App() {
                 <QuickPresets
                   selectedPresetId={activePresetId}
                   onSelect={handleQuickPreset}
+                  hwEncoders={hwEncoders}
                 />
                 <FormatSelector
                   selected={selectedFormat.ext}
@@ -511,6 +517,7 @@ export default function App() {
                   options={options}
                   onChange={handleOptionChange}
                   isAudioOnly={isAudioOnly}
+                  hwEncoders={hwEncoders}
                 />
               </>
             )}

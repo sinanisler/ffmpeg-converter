@@ -78,6 +78,16 @@ export interface FFmpegStatus {
   version?: string;
 }
 
+export interface HwEncoderStatus {
+  nvenc_h264: boolean;
+  nvenc_hevc: boolean;
+  amf_h264: boolean;
+  amf_hevc: boolean;
+  qsv_h264: boolean;
+  qsv_hevc: boolean;
+  raw: string;
+}
+
 export const api = {
   getFFmpegStatus: (): Promise<FFmpegStatus> => invoke("get_ffmpeg_status"),
 
@@ -95,6 +105,9 @@ export const api = {
     time?: number,
     options?: ConversionOptions,
   ): Promise<string> => invoke("get_thumbnail", { path, time, options }),
+
+  checkHwEncoders: (): Promise<HwEncoderStatus> =>
+    invoke("check_hw_encoders"),
 
   onProgress: (handler: (e: ProgressEvent) => void): Promise<UnlistenFn> =>
     listen<ProgressEvent>("conversion://progress", (event) =>

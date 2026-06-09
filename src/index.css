@@ -17,6 +17,8 @@
     --danger: #f87171;
     --danger-bg: rgba(248, 113, 113, 0.12);
     --success-bg: rgba(52, 211, 153, 0.12);
+    --warning-bg: rgba(251, 191, 36, 0.12);
+    --warning-border: rgba(251, 191, 36, 0.3);
   }
 
   [data-theme="light"] {
@@ -34,6 +36,8 @@
     --danger: #dc2626;
     --danger-bg: rgba(220, 38, 38, 0.1);
     --success-bg: rgba(22, 163, 74, 0.1);
+    --warning-bg: rgba(217, 119, 6, 0.1);
+    --warning-border: rgba(217, 119, 6, 0.25);
   }
 
   * {

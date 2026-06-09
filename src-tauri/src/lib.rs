@@ -82,6 +82,19 @@ pub struct ConversionDoneEvent {
     pub error: Option<String>,
 }
 
+/// Result of probing which hardware encoders FFmpeg actually supports.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct HwEncoderStatus {
+    pub nvenc_h264: bool,
+    pub nvenc_hevc: bool,
+    pub amf_h264: bool,
+    pub amf_hevc: bool,
+    pub qsv_h264: bool,
+    pub qsv_hevc: bool,
+    /// Raw ffmpeg -encoders output for debugging
+    pub raw: String,
+}
+
 // ─── State ────────────────────────────────────────────────────────────────────
 
 pub struct AppState {
@@ -388,6 +401,43 @@ pub async fn get_thumbnail(
     Ok(format!("data:image/jpeg;base64,{}", base64_simd::STANDARD.encode_to_string(&output.stdout)))
 }
 
+/// Probe which hardware encoders the FFmpeg binary actually supports.
+/// Runs `ffmpeg -encoders` once (cheap — ~0.1s) and greps for NVENC/AMF/QSV codec names.
+#[tauri::command]
+pub fn check_hw_encoders(
+    app: AppHandle,
+    state: State<AppState>,
+) -> Result<HwEncoderStatus, String> {
+    let ffmpeg = {
+        let lock = state.ffmpeg_path.lock().map_err(|e| e.to_string())?;
+        lock.clone()
+            .or_else(|| resolve_binary(&app, "ffmpeg"))
+            .ok_or("FFmpeg not found")?
+    };
+
+    let mut cmd = Command::new(&ffmpeg);
+    cmd.args(["-encoders"]);
+    #[cfg(windows)]
+    cmd.creation_flags(0x08000000);
+    let output = cmd.output().map_err(|e| format!("Failed to run ffmpeg -encoders: {}", e))?;
+
+    let raw = String::from_utf8_lossy(&output.stdout).to_string();
+    // Also include stderr for builds that print encoder list there
+    let raw_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let combined = format!("{}\n{}", raw, raw_stderr);
+    let lower = combined.to_lowercase();
+
+    Ok(HwEncoderStatus {
+        nvenc_h264: lower.contains("h264_nvenc"),
+        nvenc_hevc: lower.contains("hevc_nvenc"),
+        amf_h264:   lower.contains("h264_amf"),
+        amf_hevc:   lower.contains("hevc_amf"),
+        qsv_h264:   lower.contains("h264_qsv"),
+        qsv_hevc:   lower.contains("hevc_qsv"),
+        raw: combined,
+    })
+}
+
 } // end mod commands
 
 // ─── Hardware-acceleration helpers ───────────────────────────────────────────
@@ -629,10 +679,25 @@ fn run_conversion(
                 }));
                 
                 let lower = line.to_lowercase();
-                if lower.contains("error") || lower.contains("failed") || lower.contains("could not") {
+                // Capture lines that look like errors — broader set of keywords
+                let is_error_line = lower.contains("error")
+                    || lower.contains("failed")
+                    || lower.contains("could not")
+                    || lower.contains("cannot")
+                    || lower.contains("unable")
+                    || lower.contains("not found")
+                    || lower.contains("not supported")
+                    || lower.contains("no ")
+                    || lower.contains("invalid")
+                    || lower.contains("nvenc")
+                    || lower.contains("nvcuda")
+                    || lower.contains("amf")
+                    || lower.contains("qsv")
+                    || lower.contains("mfx");
+                if is_error_line {
                     if let Ok(mut logs) = last_errors_clone.lock() {
                         logs.push(line);
-                        if logs.len() > 5 { logs.remove(0); }
+                        if logs.len() > 10 { logs.remove(0); }
                     }
                 }
             }
@@ -680,12 +745,30 @@ fn run_conversion(
         if let Ok(logs) = last_errors.lock() {
             if !logs.is_empty() {
                 let combined = logs.join(" | ").to_lowercase();
-                if combined.contains("amfrt64.dll failed") || combined.contains("amf device context") {
-                    err_msg = "AMD AMF Error: No AMD GPU found (or driver issue). Please use a different preset.".to_string();
-                } else if combined.contains("nvcuda.dll") || combined.contains("nvenc") {
-                    err_msg = "NVIDIA NVENC Error: No NVIDIA GPU found (or driver issue). Please use a different preset.".to_string();
-                } else if combined.contains("qsv") {
-                    err_msg = "Intel QSV Error: Intel hardware acceleration failed. Please use a different preset.".to_string();
+                // ── NVIDIA NVENC failures ──────────────────────────────────────
+                if combined.contains("nvcuda.dll") && combined.contains("cannot") {
+                    err_msg = "NVIDIA NVENC: CUDA driver DLL not found. Please install NVIDIA drivers v522+ from nvidia.com.".to_string();
+                } else if combined.contains("no nvenc capable devices")
+                    || combined.contains("nv_enc_open")
+                    || (combined.contains("nvenc") && combined.contains("init"))
+                {
+                    err_msg = "NVIDIA NVENC: No compatible GPU detected. Check that your NVIDIA GPU is enabled in Device Manager and drivers are up to date.".to_string();
+                } else if combined.contains("nvenc") && (combined.contains("not") || combined.contains("no ")) {
+                    err_msg = "NVIDIA NVENC encoder not available. Your FFmpeg build may lack NVENC support, or your GPU/drivers are incompatible.".to_string();
+                } else if combined.contains("nvcuda") || combined.contains("nvenc") {
+                    err_msg = "NVIDIA NVENC Error: Hardware encoding failed. Check the Debug Console for details. Common fixes: update NVIDIA drivers, or use a CPU encoder (libx264/libx265) instead.".to_string();
+                // ── AMD AMF failures ──────────────────────────────────────────
+                } else if combined.contains("amfrt64.dll") && (combined.contains("failed") || combined.contains("cannot") || combined.contains("not found")) {
+                    err_msg = "AMD AMF: AMF runtime DLL not found. Please install AMD Adrenalin drivers 2023+ from amd.com.".to_string();
+                } else if combined.contains("amf") && (combined.contains("no ") || combined.contains("not found") || combined.contains("unavailable")) {
+                    err_msg = "AMD AMF encoder not available. Your system may lack an AMD GPU, or the GPU/drivers don't support AMF encoding.".to_string();
+                } else if combined.contains("amf") && (combined.contains("error") || combined.contains("failed")) {
+                    err_msg = "AMD AMF Error: Hardware encoding failed. Check the Debug Console for details. Common fixes: update AMD drivers, or use a CPU encoder (libx264/libx265) instead.".to_string();
+                // ── Intel QSV failures ────────────────────────────────────────
+                } else if combined.contains("qsv") && (combined.contains("not") || combined.contains("no ") || combined.contains("unavailable")) {
+                    err_msg = "Intel QSV encoder not available. Your system may lack an Intel GPU with Quick Sync support (6th gen+ required).".to_string();
+                } else if combined.contains("qsv") || combined.contains("mfx") {
+                    err_msg = "Intel QSV Error: Hardware encoding failed. Check the Debug Console for details. Common fixes: update Intel GPU drivers, or use a CPU encoder instead.".to_string();
                 } else {
                     err_msg = format!("{}: {}", err_msg, logs.last().unwrap());
                 }
@@ -719,6 +802,7 @@ pub fn run() {
             commands::start_conversion,
             commands::cancel_conversion,
             commands::get_thumbnail,
+            commands::check_hw_encoders,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

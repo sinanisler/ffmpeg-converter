@@ -8,7 +8,7 @@ import {
   AUDIO_BITRATES,
   SAMPLE_RATES,
 } from "../presets";
-import { ConversionOptions } from "../api";
+import { ConversionOptions, HwEncoderStatus } from "../api";
 
 interface AdvancedOptionsProps {
   options: Partial<ConversionOptions>;
@@ -17,14 +17,30 @@ interface AdvancedOptionsProps {
     value: ConversionOptions[keyof ConversionOptions],
   ) => void;
   isAudioOnly: boolean;
+  hwEncoders: HwEncoderStatus | null;
 }
 
 export function AdvancedOptions({
   options,
   onChange,
   isAudioOnly,
+  hwEncoders,
 }: AdvancedOptionsProps) {
   const [open, setOpen] = useState(false);
+
+  // Check if a video codec value requires a GPU encoder that isn't available
+  const isGpuCodecUnavailable = (codecValue: string): boolean => {
+    if (!hwEncoders) return false; // not yet probed — show everything
+    switch (codecValue) {
+      case "h264_nvenc": return !hwEncoders.nvenc_h264;
+      case "hevc_nvenc": return !hwEncoders.nvenc_hevc;
+      case "h264_amf":   return !hwEncoders.amf_h264;
+      case "hevc_amf":   return !hwEncoders.amf_hevc;
+      case "h264_qsv":   return !hwEncoders.qsv_h264;
+      case "hevc_qsv":   return !hwEncoders.qsv_hevc;
+      default:           return false;
+    }
+  };
 
   return (
     <div
@@ -69,6 +85,24 @@ export function AdvancedOptions({
                     options={VIDEO_CODECS}
                   />
                 </Field>
+
+                {/* GPU codec warning */}
+                {options.video_codec && isGpuCodecUnavailable(options.video_codec) && (
+                  <div
+                    className="text-xs px-3 py-2 rounded-lg flex items-start gap-2"
+                    style={{
+                      background: "var(--warning-bg, #fef3c7)",
+                      color: "var(--warning, #92400e)",
+                      border: "1px solid var(--warning-border, #fcd34d)",
+                    }}
+                  >
+                    <span>⚠</span>
+                    <span>
+                      This GPU encoder was not detected. The FFmpeg binary may lack hardware-encode support, or GPU drivers may be missing.
+                      Try a CPU encoder (libx264 / libx265) instead, or check the Debug Console for details.
+                    </span>
+                  </div>
+                )}
 
                 {/* CRF */}
                 {options.video_codec !== "copy" && (
