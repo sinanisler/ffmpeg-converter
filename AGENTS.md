@@ -2,13 +2,13 @@
 
 > **Read this file at the start of every session.** It contains the full
 > history, architecture decisions, known pitfalls, and pending work for the
-> FFmpeg Converter project.
+> SNN Video Encoder project.
   
 ---
 
 ## 1. What Is This Project?
 
-**FFmpeg Converter** is a native Windows desktop application that wraps FFmpeg
+**SNN Video Encoder** is a native Windows desktop application that wraps FFmpeg
 with a clean, user-friendly GUI. Users can convert video/audio files without
 touching a terminal.
 

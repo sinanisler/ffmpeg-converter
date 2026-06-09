@@ -1,4 +1,4 @@
-# FFmpeg Converter 
+# SNN Video Encoder 
 
 
 <br>

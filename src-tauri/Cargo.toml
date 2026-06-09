@@ -1,8 +1,8 @@
 [package]
-name = "ffmpeg-converter"
+name = "snn-video-encoder"
 version = "1.0.0"
-description = "A native FFmpeg converter with simple and advanced modes"
-authors = ["ffmpeg-converter"]
+description = "SNN Video Encoder - A native FFmpeg converter with simple and advanced modes"
+authors = ["snn-video-encoder"]
 edition = "2021"
 
 [lib]

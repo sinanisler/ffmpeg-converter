@@ -428,7 +428,7 @@ export default function App() {
               className="font-bold text-base"
               style={{ color: "var(--text)" }}
             >
-              FFmpeg Converter
+              SNN Video Encoder
             </div>
             <div
               className="text-sm"
