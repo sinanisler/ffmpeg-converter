@@ -156,7 +156,7 @@ jobs:
           New-Item -ItemType Directory -Path $name | Out-Null
 
           # Main application executable
-          Copy-Item "src-tauri\target\release\ffmpeg-converter.exe" "$name\FFmpeg-Converter.exe"
+          Copy-Item "src-tauri\target\release\snn-video-encoder.exe" "$name\FFmpeg-Converter.exe"
 
           # FFmpeg binaries — renamed to plain names so the app finds them at runtime
           # (resolve_binary in lib.rs checks <exe_dir>/ffmpeg.exe first)
