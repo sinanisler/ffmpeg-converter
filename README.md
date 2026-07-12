@@ -11,6 +11,10 @@
 A native Windows desktop application that wraps FFmpeg with a clean, modern GUI.  
 Convert video and audio files without touching a terminal — with full GPU hardware acceleration support.
 
+<img width="1914" height="1062" alt="image" src="https://github.com/user-attachments/assets/690797ff-e214-40dc-bd28-35a3733c788c" />
+
+
+
 ---
 
 ## Features
